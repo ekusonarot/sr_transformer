@@ -14,22 +14,22 @@ from torch.nn import functional as f
 
 epoch = 1000
 lr = 1e-2
-early_stopping = 20
+early_stopping = 5
 
 def ycbcr_to_bgr_tensor(img):
-    r = (298.082 * img[:,0,:,:] / 255. + 408.583 * img[:,2,:,:] / 255. - 222.921 / 255.).unsqueeze(1)
-    g = (298.082 * img[:,0,:,:] / 255. - 100.291 * img[:,1,:,:] / 255. - 208.120 * img[:,2,:,:] / 255. + 135.576 / 255.).unsqueeze(1)
-    b = (298.082 * img[:,0,:,:] / 255. + 516.412 * img[:,1,:,:] / 255. - 276.836 / 255.).unsqueeze(1)
+    r = (298.082 * img[:,0,:,:] / 255. + 408.583 * img[:,2,:,:] / 255. - 222.921 / 255. /255.).unsqueeze(1)
+    g = (298.082 * img[:,0,:,:] / 255. - 100.291 * img[:,1,:,:] / 255. - 208.120 * img[:,2,:,:] / 255. + 135.576 / 255. / 255.).unsqueeze(1)
+    b = (298.082 * img[:,0,:,:] / 255. + 516.412 * img[:,1,:,:] / 255. - 276.836 / 255. /255.).unsqueeze(1)
     return torch.cat((b, g, r),dim=1)
 
 def bgr_to_ycbcr_tensor(img):
-    y = (16. + (64.738 * img[:,2,:,:] + 129.057 * img[:,1,:,:] + 25.064 * img[:,0,:,:]) / 255.).unsqueeze(1)
-    cb = (128. + (-37.945 * img[:,2,:,:] - 74.494 * img[:,1,:,:] + 112.439 * img[:,0,:,:]) / 255.).unsqueeze(1)
-    cr = (128. + (112.439 * img[:,2,:,:] - 94.154 * img[:,1,:,:] - 18.285 * img[:,0,:,:]) / 255.).unsqueeze(1)
+    y = (16. / 255. + (64.738 * img[:,2,:,:] + 129.057 * img[:,1,:,:] + 25.064 * img[:,0,:,:]) / 255.).unsqueeze(1)
+    cb = (128. / 255. + (-37.945 * img[:,2,:,:] - 74.494 * img[:,1,:,:] + 112.439 * img[:,0,:,:]) / 255.).unsqueeze(1)
+    cr = (128. / 255. + (112.439 * img[:,2,:,:] - 94.154 * img[:,1,:,:] - 18.285 * img[:,0,:,:]) / 255.).unsqueeze(1)
     return torch.cat([y, cb, cr], dim=1)
 
 def bgr_to_y_tensor(img):
-    return ((16. + (64.738 * img[:,2,:,:] + 129.057 * img[:,1,:,:] + 25.064 * img[:,0,:,:]) / 255.) / 255.).unsqueeze(1)
+    return (16. / 255. + (64.738 * img[:,2,:,:] + 129.057 * img[:,1,:,:] + 25.064 * img[:,0,:,:]) / 255.).unsqueeze(1)
 
 def unfold(img, kernel_size, stride):
     t = f.unfold(img, kernel_size=kernel_size, stride=stride)
@@ -99,7 +99,7 @@ if __name__ == "__main__":
                 del gt_buf[i:]
                 break
             resized_img = cv2.resize(frame, dsize=None, fx=scale, fy=scale)
-            in_buf[i] = resized_img
+            in_buf[i] = resized_img/255.
             gt_buf[i] = frame/255.
         
         if len(in_buf) == 0:
@@ -119,7 +119,7 @@ if __name__ == "__main__":
             input_y = unfold(y, kernel_size=patch_size, stride=patch_size)
             sr_y = model(input_y)
             upscaled_input = upsample(input)
-            upscaled_ycbcr = bgr_to_ycbcr_tensor(upscaled_input)/255.
+            upscaled_ycbcr = bgr_to_ycbcr_tensor(upscaled_input)
             sr_y = fold(sr_y, output_shape=target.shape, kernel_size=int(patch_size/scale), stride=int(patch_size/scale))
             output = torch.cat((sr_y, upscaled_ycbcr[:,1:,:,:]), dim=1)
             output = ycbcr_to_bgr_tensor(output)
