@@ -9,17 +9,18 @@ import torch
 import torch.optim as optim
 import cv2
 from torch.nn import MSELoss
+import lpips
 from utils import Converter
 from torch.nn import functional as f
 
 epoch = 1000
-lr = 1e-2
+lr = 3e-2
 early_stopping = 5
 
 def ycbcr_to_bgr_tensor(img):
-    r = (298.082 * img[:,0,:,:] / 255. + 408.583 * img[:,2,:,:] / 255. - 222.921 / 255. /255.).unsqueeze(1)
-    g = (298.082 * img[:,0,:,:] / 255. - 100.291 * img[:,1,:,:] / 255. - 208.120 * img[:,2,:,:] / 255. + 135.576 / 255. / 255.).unsqueeze(1)
-    b = (298.082 * img[:,0,:,:] / 255. + 516.412 * img[:,1,:,:] / 255. - 276.836 / 255. /255.).unsqueeze(1)
+    r = (298.082 * img[:,0,:,:] / 255. + 408.583 * img[:,2,:,:] / 255. - 222.921 / 255.).unsqueeze(1)
+    g = (298.082 * img[:,0,:,:] / 255. - 100.291 * img[:,1,:,:] / 255. - 208.120 * img[:,2,:,:] / 255. + 135.576 / 255.).unsqueeze(1)
+    b = (298.082 * img[:,0,:,:] / 255. + 516.412 * img[:,1,:,:] / 255. - 276.836 / 255.).unsqueeze(1)
     return torch.cat((b, g, r),dim=1)
 
 def bgr_to_ycbcr_tensor(img):
@@ -89,6 +90,8 @@ if __name__ == "__main__":
             raise KeyError(n)
     upsample = torch.nn.Upsample(scale_factor=1/scale, mode='bicubic')
     sigmoid = torch.nn.Sigmoid()
+    mseloss = MSELoss()
+    lpips = lpips.LPIPS(net="alex").cuda()
 
     while True:
         start = time.perf_counter()
@@ -109,21 +112,21 @@ if __name__ == "__main__":
         target = np.array(gt_buf).transpose([0,3,1,2])
         target = torch.tensor(target, device=device, dtype=torch.float)
         optimizer = optim.Adam([input], lr=lr)
-        mseloss = MSELoss()
         minloss = 1e+10
         early_stop = 0
         print(time.perf_counter() -start)
         for e in range(epoch):
             optimizer.zero_grad()
-            y = bgr_to_y_tensor(input)
+            sigmoid_input = sigmoid(input)
+            y = bgr_to_y_tensor(sigmoid_input)
             input_y = unfold(y, kernel_size=patch_size, stride=patch_size)
             sr_y = model(input_y)
-            upscaled_input = upsample(input)
+            upscaled_input = upsample(sigmoid_input)
             upscaled_ycbcr = bgr_to_ycbcr_tensor(upscaled_input)
             sr_y = fold(sr_y, output_shape=target.shape, kernel_size=int(patch_size/scale), stride=int(patch_size/scale))
             output = torch.cat((sr_y, upscaled_ycbcr[:,1:,:,:]), dim=1)
             output = ycbcr_to_bgr_tensor(output)
-            loss = mseloss(output, target)
+            loss = lpips(output, target).sum()/batch_size
             loss.backward()
             optimizer.step()
             bar = int(e/epoch*40)
@@ -138,6 +141,7 @@ if __name__ == "__main__":
                 early_stop = 0
             del loss
         print("\n")
+        input = sigmoid(input)
         input = input.mul(255.).cpu().detach().numpy().transpose([0,2,3,1])
         for i in input:
             writer.write(np.clip(i, 0., 255.).astype(np.uint8))
