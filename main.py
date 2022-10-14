@@ -10,8 +10,8 @@ from torch.nn import MSELoss
 from utils import Converter
 
 epoch = 500
-lr = 1e-2
-early_stopping = 10
+lr = 1e-1
+early_stopping = 30
 
 def ycbcr_to_rgb_tensor(img):
     r = (298.082 * img[:,0,:,:] / 255. + 408.583 * img[:,2,:,:] / 255. - 222.921 / 255.).unsqueeze(1)
@@ -112,15 +112,16 @@ if __name__ == "__main__":
         print(time.perf_counter() -start)
         for e in range(epoch):
             optimizer.zero_grad()
-            output = model(input)
+            s_input = torch.nn.Sigmoid()(input)
+            output = model(s_input)
             output = torch.cat((output, mid[:,1:,:,:]), dim=1)
             output = ycbcr_to_rgb_tensor(output)
             loss = mseloss(output, target)
             loss.backward()
             optimizer.step()
             bar = int(e/epoch*40)
-            print("\r[train] epoch{}[{}] loss:{}".format(e, '='*bar+'-'*(40-bar), loss.item()), end="")
-            if minloss < float(loss.item()):
+            print("\r[train] epoch{}[{}] loss:{} {}".format(e, '='*bar+'-'*(40-bar), loss.item(), early_stop), end="")
+            if minloss*0.999 < float(loss.item()):
                 early_stop += 1
                 if early_stopping < early_stop:
                     print("[train] early stopping")
@@ -130,6 +131,7 @@ if __name__ == "__main__":
                 early_stop = 0
             del loss
         print("\n")
+        input = torch.nn.Sigmoid()(input)
         input = input.mul(255.).cpu().detach().numpy()
         for i in range(0, len(input), w_index*h_index):
             frame = input[i:i+w_index*h_index,:,:,:]
